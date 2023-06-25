@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<title>{{ title }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<nav id="sidenav">
+	<ul id="sitemap">
+		{% for item in sitemap recursive %}
+			<li id="{{ item.id }}" class="{{ item.title }}">
+				
+				{% if item.href %}
+					<a onclick="hydrate('{{ item.href }}')">{{ item.title }}</a>
+				{% else %}
+					<a onclick="toggle('{{item.id}}')">{{ item.title }}</a>
+				{% endif %}
+				{% if item.children %}
+					<ul class="{{ 'hide' if loop.depth > 0 else '' }}">{{ loop(item.children) }}</ul>
+				{% endif %}
+			</li>
+		{% endfor %}
+	</ul>
+</nav>
+<section id="content" class="main">
+</section>
+<script>
+	function toggle(id) {
+		let element = document.getElementById(id).getElementsByTagName('ul')[0];
+		if (element.classList.contains('hide')) {
+			element.classList.remove('hide');
+		} else {
+			element.classList.add('hide');
+		}
+	}
+
+	async function hydrate(path) {
+		const response = await fetch(`/api${path}`);
+		const html = await response.text();
+		document.getElementById('content').innerHTML = html;
+		window.history.pushState({}, "", path)
+	}
+
+	function reveal(path) {
+		let node = document.getElementById('sitemap');
+		for (const folder of path.split('/'))
+		{
+			for (const element of node.children) {
+				if (element.className.includes(folder)) {
+					node = element.getElementsByTagName('ul')[0];
+					if (node) {
+						if (node.classList.contains('hide')) {
+							node.classList.remove('hide');
+						}	
+					}
+					break;
+				}
+			}
+		}
+	}
+
+	hydrate('/{{ path|safe }}')
+	reveal('{{ path|safe }}')
+</script>

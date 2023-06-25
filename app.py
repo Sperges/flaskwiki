@@ -1,51 +1,75 @@
 import os
 import markdown
-from markupsafe import Markup
-from flask import Flask, abort, jsonify, render_template
+from pathlib import Path
+from flask import Flask, abort, render_template
 
-def generate_tree_data():
-	tree_data = []
-	for root, dirs, files in os.walk(base_md_path):
-		node = {
-			'id': root,
-			'text': os.path.basename(root),
-			'children': [],
-		}
-		for file in files:
-			node['children'].append({
-				'id': os.path.join(root, file),
-				'text': file,
-			})
-		tree_data.append(node)
-	return tree_data
+
+def get_sitemap_id():
+	id = -1
+	def increment():
+		nonlocal id
+		id += 1
+		return id
+	return increment
 
 
 app = Flask(__name__)
-base_md_path = 'md/'
-tree_data = generate_tree_data()
+base_md_path = 'md'
+sitemap_id = get_sitemap_id()
 
 
-@app.route('/tree')
-def tree():
-	return jsonify(tree_data)
+def generate_tree_dict(folder_path):
+    return generate_inner_tree_dict(folder_path)['children']
 
 
-@app.route('/')
-def hello_world():
-    return '<p>Hello, World!</p>'
+def generate_inner_tree_dict(folder_path):
+    if not os.path.isdir(folder_path):
+        return None
+    
+    folder_name = os.path.basename(folder_path)
+    tree = {
+        'title': folder_name,
+        'href': None,
+        'children': [],
+        'id': sitemap_id(),
+	}
 
+    files = sorted(os.listdir(folder_path))
+    for file_name in files:
+        file_name = Path(file_name).resolve().stem
+        file_path = f'{folder_path}/{file_name}'
+        if os.path.isdir(file_path):
+            subtree = generate_inner_tree_dict(file_path)
+            if subtree:
+                tree['children'].append(subtree)
+        else:
+            tree['children'].append({
+                'title': file_name,
+                'href': file_path.lstrip(base_md_path),
+                'children': None,
+                'id': sitemap_id(),
+			})
 
-@app.route('/<page>')
-def page(page=None):
-	file_path = f'{base_md_path}{page}.md'
+    return tree
 
+@app.route('/api/<path:location>')
+def page_api(location=None):
+	file_path = f'{base_md_path}/{location}.md'
+        
 	if not os.path.exists(file_path):
 		abort(404)
 
 	file = open(file_path, 'r')
-	md_content = Markup(markdown.markdown(file.read()))
+	return markdown.markdown(file.read())
 
-	return render_template('wiki_page.html', content=md_content)
+@app.route('/<path:location>')
+def page(location=None):
+	return render_template(
+		'page.html',
+        sitemap=generate_tree_dict(base_md_path),
+		#sidebar=render_template('sidebar.html', sitemap=generate_tree_dict(base_md_path)),
+		path=location,
+		)
 
 
 @app.errorhandler(404)
